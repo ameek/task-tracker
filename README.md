@@ -21,10 +21,10 @@ A simple, lightweight command-line productivity tracker that helps you monitor y
 - **Daily Summaries**: View all tasks completed on a specific date
 
 ### 📊 Reporting & Export
-- **CSV Export**: Generate spreadsheet-friendly reports for managers
-- **JSON Export**: Structured data export for technical analysis
+- **CSV Export**: Generate clean, spreadsheet-friendly reports for sharing
+- **JSON Export**: Structured data export for detailed analysis
 - **Date Range Filtering**: Export specific time periods
-- **Multiple Formats**: Choose between CSV (recommended for managers) or JSON
+- **Multiple Formats**: Choose between CSV (recommended for sharing) or JSON
 - **Automatic File Naming**: Smart default naming or custom filenames
 
 ### 🔧 Data Management
@@ -218,9 +218,9 @@ tracker summary 2025-08-19
 tracker active
 ```
 
-### Exporting for Manager Reports
+### Exporting for Self-Review and Sharing
 ```bash
-# Quick daily report (CSV format - best for managers)
+# Quick daily report (CSV format - easy to share and review)
 tracker export csv
 
 # Today's report with single date
@@ -233,17 +233,17 @@ tracker export csv 2025-08-20
 tracker export csv 2025-08-14 2025-08-20
 
 # Custom filename for daily report
-tracker export csv 2025-08-20 "" "daily_standup_report.csv"
+tracker export csv 2025-08-20 "" "daily_progress_report.csv"
 
 # Monthly report in JSON format for detailed analysis
 tracker export json 2025-08-01 2025-08-31 "august_detailed_report.json"
 ```
 
-**💡 Recommendation for Manager Reports:**
+**💡 Recommendation for Reports:**
 - **Use CSV format** - Opens directly in Excel/Google Sheets
 - **Include date ranges** - Be specific about the reporting period
-- **Use descriptive filenames** - Make it easy for your manager to understand
-- The CSV includes: Date, Times, Duration, Task Description, Learning outcomes, Links, and Status
+- **Use descriptive filenames** - Make it easy to understand and organize
+- The CSV includes: Date, Times, Duration, Task Description, Learning outcomes, and Status
 - **Files are saved to:** `~/task-reports/` (easy to find and share)
 
 ## ⚙️ Requirements

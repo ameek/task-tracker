@@ -222,7 +222,7 @@ export_log() {
   echo "📤 Exporting tasks from $START_DATE to $END_DATE in $FORMAT format..."
 
   if [ "$FORMAT" = "csv" ]; then
-    # CSV Export - Clean and simple for managers
+    # CSV Export - Clean and simple format for sharing
     echo "Date,Start Time,End Time,Duration,Task Description,What Was Learned,Status" > "$FULL_OUTPUT_PATH"
     
     jq -r --arg start "$START_DATE" --arg end "$END_DATE" '
@@ -289,7 +289,7 @@ export_log() {
   fi
 
   echo ""
-  echo "💡 To share with your manager:"
+  echo "💡 For sharing or review:"
   echo "   📁 File location: $FULL_OUTPUT_PATH"
   if [ "$FORMAT" = "csv" ]; then
     echo "   📊 Open with: Excel, Google Sheets, or any spreadsheet app"
