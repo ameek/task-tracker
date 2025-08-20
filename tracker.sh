@@ -36,7 +36,7 @@ start_task() {
   jq --arg id "$ID" --arg start "$START" --arg desc "$1" \
     '. += [{"id": $id, "start": $start, "end": null, "start_desc": $desc, "end_desc": null, "details": null, "links": [], "duration": null}]' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
-  echo "✅ Task started: $1 (id=$ID)"
+  echo "✅ Task started: $1 id= $ID"
 }
 
 finish_task() {
@@ -58,7 +58,7 @@ finish_task() {
 
   START=$(jq -r --arg id "$ID" '.[] | select(.id==$id) | .start' "$FILE")
   if [ "$START" = "null" ] || [ -z "$START" ]; then
-    echo "❌ Task $ID not found."
+    echo "❌ Task id= $ID not found."
     exit 1
   fi
 
@@ -77,7 +77,7 @@ finish_task() {
   jq --arg id "$ID" --arg end "$END" --arg desc "$DESC" --arg dur "$DURATION" \
     'map(if .id == $id then .end=$end | .end_desc=$desc | .duration=$dur else . end)' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
-  echo "🏁 Task $ID finished: $DESC (Duration: $DURATION)"
+  echo "🏁 Task id= $ID finished: $DESC (Duration: $DURATION)"
 }
 
 add_link() {
@@ -99,14 +99,14 @@ add_link() {
   # Check if task exists
   TASK_EXISTS=$(jq -r --arg id "$ID" '.[] | select(.id==$id) | .id' "$FILE")
   if [ -z "$TASK_EXISTS" ]; then
-    echo "❌ Task $ID not found."
+    echo "❌ Task id= $ID not found."
     exit 1
   fi
 
   jq --arg id "$ID" --arg link "$LINK" \
     'map(if .id == $id then .links += [$link] else . end)' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
-  echo "🔗 Link added to task $ID: $LINK"
+  echo "🔗 Link added to task id= $ID: $LINK"
 }
 
 add_details() {
@@ -129,14 +129,14 @@ add_details() {
   # Check if task exists
   TASK_EXISTS=$(jq -r --arg id "$ID" '.[] | select(.id==$id) | .id' "$FILE")
   if [ -z "$TASK_EXISTS" ]; then
-    echo "❌ Task $ID not found."
+    echo "❌ Task id= $ID not found."
     exit 1
   fi
 
   jq --arg id "$ID" --arg details "$DETAILS" \
     'map(if .id == $id then .details = $details else . end)' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
-  echo "📝 Details added to task $ID: $DETAILS"
+  echo "📝 Details added to task id= $ID: $DETAILS"
 }
 
 show_tasks() {
@@ -304,19 +304,19 @@ helper_log() {
   echo "Usage:"
   echo "  tracker start <desc>"
   echo "     → Start a new task"
-  echo "     Example: tracker start \"Read RabbitMQ docs\""
+  echo "     Example: tracker start \"Read RabbitMQ docs\"  (after starting the task the script will display the id in the form: id=<trackid>)"
   echo
   echo "  tracker finish <id> <desc>"
   echo "     → Finish a task and record what you learned"
-  echo "     Example: tracker finish a1f3b92d \"Learned basics\""
+  echo "     Example: tracker finish id=a1f3b92d \"Learned basics\""
   echo
   echo "  tracker link <id> <url>"
   echo "     → Add a link/resource to a task"
-  echo "     Example: tracker link a1f3b92d https://www.rabbitmq.com/tutorials/"
+  echo "     Example: tracker link id=a1f3b92d https://www.rabbitmq.com/tutorials/"
   echo
   echo "  tracker details <id> <details>"
   echo "     → Add detailed notes to a task (use ';' or newlines for line breaks in JSON)"
-  echo "     Example: tracker details a1f3b92d \"Key insight; Important finding; Next steps\""
+  echo "     Example: tracker details id=a1f3b92d \"Key insight; Important finding; Next steps\""
   echo
   echo "  tracker show"
   echo "     → Show all tasks in JSON"
