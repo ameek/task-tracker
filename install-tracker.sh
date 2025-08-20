@@ -42,10 +42,8 @@ sed -i 's|Usage: ./tracker.sh|Usage: tracker|g' "$SCRIPT_PATH"
 sed -i 's|Example: ./tracker.sh|Example: tracker|g' "$SCRIPT_PATH"
 sed -i 's|"./tracker.sh|"tracker|g' "$SCRIPT_PATH"
 
-# Add installation info to help
-sed -i '/echo "------------------------------------"/i\
-  echo "📂 Data stored in: $HOME/.task-tracker/"\
-  echo "🔗 Installed at: '"$SCRIPT_PATH"'"' "$SCRIPT_PATH"
+# Remove installation info addition - it's causing duplication
+# The help function already has the info built in
 
 # Make the script executable
 echo "🔧 Making script executable..."

@@ -1,12 +1,12 @@
 #!/bin/bash
-FILE="$HOME/prod-tracker/tasks.json"
-TMP="$HOME/prod-tracker/tmp_task.json"
+FILE="$HOME/.task-tracker/tasks.json"
+TMP="$HOME/.task-tracker/tmp_task.json"
 
 # Initialize directory and file if they don't exist
 init_tracker() {
-  if [ ! -d "$HOME/prod-tracker" ]; then
-    mkdir -p "$HOME/prod-tracker"
-    echo "📁 Created directory: $HOME/prod-tracker"
+  if [ ! -d "$HOME/.task-tracker" ]; then
+    mkdir -p "$HOME/.task-tracker"
+    echo "📁 Created directory: $HOME/.task-tracker"
   fi
   
   if [ ! -f "$FILE" ]; then
@@ -46,13 +46,13 @@ finish_task() {
 
   # Check if task ID is provided
   if [ -z "$ID" ]; then
-    echo "❌ Task ID is required. Usage: ./tracker.sh finish <id> <description>"
+    echo "❌ Task ID is required. Usage: tracker finish <id> <description>"
     exit 1
   fi
 
   # Check if description is provided
   if [ -z "$DESC" ]; then
-    echo "❌ Description is required. Usage: ./tracker.sh finish <id> <description>"
+    echo "❌ Description is required. Usage: tracker finish <id> <description>"
     exit 1
   fi
 
@@ -75,7 +75,7 @@ finish_task() {
   fi
 
   jq --arg id "$ID" --arg end "$END" --arg desc "$DESC" --arg dur "$DURATION" \
-    'map(if .id == $id then .end=$end | .end_desc=$desc | .duration=$dur else . end) end' \
+    'map(if .id == $id then .end=$end | .end_desc=$desc | .duration=$dur else . end)' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
   echo "🏁 Task $ID finished: $DESC (Duration: $DURATION)"
 }
@@ -86,13 +86,13 @@ add_link() {
   
   # Check if task ID is provided
   if [ -z "$ID" ]; then
-    echo "❌ Task ID is required. Usage: ./tracker.sh link <id> <url>"
+    echo "❌ Task ID is required. Usage: tracker link <id> <url>"
     exit 1
   fi
 
   # Check if link is provided
   if [ -z "$LINK" ]; then
-    echo "❌ Link is required. Usage: ./tracker.sh link <id> <url>"
+    echo "❌ Link is required. Usage: tracker link <id> <url>"
     exit 1
   fi
 
@@ -104,7 +104,7 @@ add_link() {
   fi
 
   jq --arg id "$ID" --arg link "$LINK" \
-    'map(if .id == $id then .links += [$link] else . end) end' \
+    'map(if .id == $id then .links += [$link] else . end)' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
   echo "🔗 Link added to task $ID: $LINK"
 }
@@ -145,30 +145,32 @@ helper_log() {
   echo "📖 Productivity Tracker Helper"
   echo "------------------------------------"
   echo "Usage:"
-  echo "  ./tracker.sh start <desc>"
+  echo "  tracker start <desc>"
   echo "     → Start a new task"
-  echo "     Example: ./tracker.sh start \"Read RabbitMQ docs\""
+  echo "     Example: tracker start \"Read RabbitMQ docs\""
   echo
-  echo "  ./tracker.sh finish <id> <desc>"
+  echo "  tracker finish <id> <desc>"
   echo "     → Finish a task and record what you learned"
-  echo "     Example: ./tracker.sh finish a1f3b92d \"Learned basics\""
+  echo "     Example: tracker finish a1f3b92d \"Learned basics\""
   echo
-  echo "  ./tracker.sh link <id> <url>"
+  echo "  tracker link <id> <url>"
   echo "     → Add a link/resource to a task"
-  echo "     Example: ./tracker.sh link a1f3b92d https://www.rabbitmq.com/tutorials/"
+  echo "     Example: tracker link a1f3b92d https://www.rabbitmq.com/tutorials/"
   echo
-  echo "  ./tracker.sh show"
+  echo "  tracker show"
   echo "     → Show all tasks in JSON"
   echo
-  echo "  ./tracker.sh active"
+  echo "  tracker active"
   echo "     → Show only active (unfinished) tasks"
   echo
-  echo "  ./tracker.sh summary [date]"
+  echo "  tracker summary [date]"
   echo "     → Show daily summary (default: today)"
-  echo "     Example: ./tracker.sh summary 2025-08-20"
+  echo "     Example: tracker summary 2025-08-20"
   echo
-  echo "  ./tracker.sh -h | help"
+  echo "  tracker -h | help"
   echo "     → Show this helper log"
+  echo "📂 Data stored in: $HOME/.task-tracker/"
+  echo "🔗 Installed at: $HOME/.task-tracker/tracker.sh"
   echo "------------------------------------"
 }
 
