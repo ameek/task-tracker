@@ -20,6 +20,13 @@ A simple, lightweight command-line productivity tracker that helps you monitor y
 - **Resource Links**: Add URLs and references to tasks
 - **Daily Summaries**: View all tasks completed on a specific date
 
+### 📊 Reporting & Export
+- **CSV Export**: Generate spreadsheet-friendly reports for managers
+- **JSON Export**: Structured data export for technical analysis
+- **Date Range Filtering**: Export specific time periods
+- **Multiple Formats**: Choose between CSV (recommended for managers) or JSON
+- **Automatic File Naming**: Smart default naming or custom filenames
+
 ### 🔧 Data Management
 - **JSON Storage**: All data stored in simple JSON format
 - **Data Portability**: Easy to backup, sync, or migrate
@@ -110,6 +117,18 @@ tracker summary 2025-08-19
 # Output: Summary for specific date
 ```
 
+#### Export for reporting
+```bash
+tracker export
+# Output: CSV report for last 30 days (default)
+
+tracker export csv 2025-08-01 2025-08-20
+# Output: CSV report for specific date range
+
+tracker export json 2025-08-15 2025-08-20 "weekly_report.json"
+# Output: Named JSON report for specific date range
+```
+
 #### Get help
 ```bash
 tracker -h
@@ -127,6 +146,7 @@ tracker help
 | `tracker active` | Show unfinished tasks | `tracker active` |
 | `tracker show` | Show all tasks (JSON) | `tracker show` |
 | `tracker summary [date]` | Daily summary | `tracker summary 2025-08-20` |
+| `tracker export [format] [start] [end] [file]` | Export for reporting | `tracker export csv 2025-08-01 2025-08-20` |
 | `tracker help` | Show help | `tracker help` |
 
 ## 📁 File Structure
@@ -136,6 +156,9 @@ tracker help
 ├── tracker.sh           # Main script
 ├── tasks.json           # Task data storage
 └── tmp_task.json        # Temporary file for atomic updates
+
+~/task-reports/
+└── *.csv, *.json        # Exported reports for sharing
 ```
 
 ## 📊 Data Format
@@ -194,6 +217,34 @@ tracker summary 2025-08-19
 # See all active tasks that need attention
 tracker active
 ```
+
+### Exporting for Manager Reports
+```bash
+# Quick daily report (CSV format - best for managers)
+tracker export csv
+
+# Today's report with single date
+tracker export csv $(date +%Y-%m-%d)
+
+# Specific day report  
+tracker export csv 2025-08-20
+
+# Weekly report with date range
+tracker export csv 2025-08-14 2025-08-20
+
+# Custom filename for daily report
+tracker export csv 2025-08-20 "" "daily_standup_report.csv"
+
+# Monthly report in JSON format for detailed analysis
+tracker export json 2025-08-01 2025-08-31 "august_detailed_report.json"
+```
+
+**💡 Recommendation for Manager Reports:**
+- **Use CSV format** - Opens directly in Excel/Google Sheets
+- **Include date ranges** - Be specific about the reporting period
+- **Use descriptive filenames** - Make it easy for your manager to understand
+- The CSV includes: Date, Times, Duration, Task Description, Learning outcomes, Links, and Status
+- **Files are saved to:** `~/task-reports/` (easy to find and share)
 
 ## ⚙️ Requirements
 
