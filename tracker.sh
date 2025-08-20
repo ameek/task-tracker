@@ -34,7 +34,7 @@ start_task() {
   fi
   
   jq --arg id "$ID" --arg start "$START" --arg desc "$1" \
-    '. += [{"id": $id, "start": $start, "end": null, "start_desc": $desc, "end_desc": null, "details": [], "links": [], "duration": null}]' \
+    '. += [{"id": $id, "start": $start, "end": null, "start_desc": $desc, "end_desc": null, "details": null, "links": [], "duration": null}]' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
   echo "✅ Task started: $1 (id=$ID)"
 }
@@ -109,6 +109,36 @@ add_link() {
   echo "🔗 Link added to task $ID: $LINK"
 }
 
+add_details() {
+  ID="$1"
+  shift
+  DETAILS="$*"
+  
+  # Check if task ID is provided
+  if [ -z "$ID" ]; then
+    echo "❌ Task ID is required. Usage: tracker details <id> <details>"
+    exit 1
+  fi
+
+  # Check if details are provided
+  if [ -z "$DETAILS" ]; then
+    echo "❌ Details are required. Usage: tracker details <id> <details>"
+    exit 1
+  fi
+
+  # Check if task exists
+  TASK_EXISTS=$(jq -r --arg id "$ID" '.[] | select(.id==$id) | .id' "$FILE")
+  if [ -z "$TASK_EXISTS" ]; then
+    echo "❌ Task $ID not found."
+    exit 1
+  fi
+
+  jq --arg id "$ID" --arg details "$DETAILS" \
+    'map(if .id == $id then .details = $details else . end)' \
+    "$FILE" > "$TMP" && mv "$TMP" "$FILE"
+  echo "📝 Details added to task $ID: $DETAILS"
+}
+
 show_tasks() {
   jq '.' "$FILE"
 }
@@ -170,16 +200,16 @@ export_log() {
     if [ "$START_DATE" = "$END_DATE" ]; then
       # Single day report
       if [ "$FORMAT" = "csv" ]; then
-        OUTPUT_FILE="daily_report_${START_DATE}.csv"
+        OUTPUT_FILE="my_daily_report_${START_DATE}.csv"
       else
-        OUTPUT_FILE="daily_report_${START_DATE}.json"
+        OUTPUT_FILE="my_daily_report_${START_DATE}.json"
       fi
     else
       # Multi-day report
       if [ "$FORMAT" = "csv" ]; then
-        OUTPUT_FILE="task_report_${START_DATE}_to_${END_DATE}.csv"
+        OUTPUT_FILE="my_task_report_${START_DATE}_to_${END_DATE}.csv"
       else
-        OUTPUT_FILE="task_report_${START_DATE}_to_${END_DATE}.json"
+        OUTPUT_FILE="my_task_report_${START_DATE}_to_${END_DATE}.json"
       fi
     fi
   fi
@@ -192,8 +222,8 @@ export_log() {
   echo "📤 Exporting tasks from $START_DATE to $END_DATE in $FORMAT format..."
 
   if [ "$FORMAT" = "csv" ]; then
-    # CSV Export
-    echo "Date,Start Time,End Time,Duration,Task Description,What Was Learned,Links,Status" > "$FULL_OUTPUT_PATH"
+    # CSV Export - Clean and simple for managers
+    echo "Date,Start Time,End Time,Duration,Task Description,What Was Learned,Status" > "$FULL_OUTPUT_PATH"
     
     jq -r --arg start "$START_DATE" --arg end "$END_DATE" '
       map(select(.start >= $start and .start <= ($end + " 23:59:59"))) 
@@ -205,7 +235,6 @@ export_log() {
           (if .duration then .duration else "In Progress" end),
           .start_desc,
           (if .end_desc then .end_desc else "Not completed" end),
-          (.links | join("; ")),
           (if .end then "Completed" else "In Progress" end)
         ] | @csv
     ' "$FILE" >> "$FULL_OUTPUT_PATH"
@@ -219,7 +248,7 @@ export_log() {
     echo "   🔄 In progress: $((TOTAL_TASKS - COMPLETED_TASKS))"
 
   elif [ "$FORMAT" = "json" ]; then
-    # JSON Export
+    # JSON Export - Complete detailed export with all fields
     jq --arg start "$START_DATE" --arg end "$END_DATE" '
       {
         "export_info": {
@@ -239,6 +268,7 @@ export_log() {
             duration: .duration,
             task_description: .start_desc,
             what_learned: .end_desc,
+            details: (if .details then (.details | split(".") | map(select(length > 0) | ltrimstr(" ") | rtrimstr(" ")) | join("\n")) else null end),
             links: .links,
             status: (if .end then "completed" else "in_progress" end)
           })
@@ -284,6 +314,10 @@ helper_log() {
   echo "     → Add a link/resource to a task"
   echo "     Example: tracker link a1f3b92d https://www.rabbitmq.com/tutorials/"
   echo
+  echo "  tracker details <id> <details>"
+  echo "     → Add detailed notes to a task (use '.' for line breaks in JSON)"
+  echo "     Example: tracker details a1f3b92d \"Key insight. Important finding. Next steps\""
+  echo
   echo "  tracker show"
   echo "     → Show all tasks in JSON"
   echo
@@ -313,6 +347,7 @@ case "$1" in
   start) shift; start_task "$*";;
   finish) finish_task "$2" "$3";;
   link) add_link "$2" "$3";;
+  details) shift; add_details "$@";;
   show) show_tasks;;
   active) list_active;;
   summary) daily_summary "$2";;
