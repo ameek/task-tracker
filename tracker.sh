@@ -268,7 +268,7 @@ export_log() {
             duration: .duration,
             task_description: .start_desc,
             what_learned: .end_desc,
-            details: (if .details then (.details | split(".") | map(select(length > 0) | ltrimstr(" ") | rtrimstr(" ")) | join("\n")) else null end),
+            details: (if .details then (.details | gsub("\\n"; "\n") | split(";") | map(split("\n")) | flatten | map(select(length > 0) | ltrimstr(" ") | rtrimstr(" ")) | join("\n")) else null end),
             links: .links,
             status: (if .end then "completed" else "in_progress" end)
           })
@@ -315,8 +315,8 @@ helper_log() {
   echo "     Example: tracker link a1f3b92d https://www.rabbitmq.com/tutorials/"
   echo
   echo "  tracker details <id> <details>"
-  echo "     → Add detailed notes to a task (use '.' for line breaks in JSON)"
-  echo "     Example: tracker details a1f3b92d \"Key insight. Important finding. Next steps\""
+  echo "     → Add detailed notes to a task (use ';' or newlines for line breaks in JSON)"
+  echo "     Example: tracker details a1f3b92d \"Key insight; Important finding; Next steps\""
   echo
   echo "  tracker show"
   echo "     → Show all tasks in JSON"
