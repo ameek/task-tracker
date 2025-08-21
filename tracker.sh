@@ -24,8 +24,8 @@ init_tracker() {
 init_tracker
 
 generate_id() {
-  # Short unique ID from current timestamp
-  echo $(date +%s | sha1sum | cut -c1-8)
+  # Short unique ID from current timestamp with nanoseconds for uniqueness
+  echo $(date +%s%N | sha1sum | cut -c1-8)
 }
 
 get_active_task() {
@@ -36,10 +36,17 @@ pause_current_active() {
   CURRENT_ACTIVE=$(get_active_task)
   if [ -n "$CURRENT_ACTIVE" ]; then
     PAUSE_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+    # Get the description of the task being paused
+    PAUSED_TASK_DESC=$(jq -r --arg id "$CURRENT_ACTIVE" '.[] | select(.id==$id) | .start_desc' "$FILE")
+    
     jq --arg id "$CURRENT_ACTIVE" --arg pause "$PAUSE_TIME" \
       'map(if .id == $id then .pause_time = $pause else . end)' \
       "$FILE" > "$TMP" && mv "$TMP" "$FILE"
+    
+    echo "⏸️  Paused: $PAUSED_TASK_DESC (id= $CURRENT_ACTIVE)"
+    return 0
   fi
+  return 1
 }
 
 resume_task() {
@@ -96,7 +103,7 @@ start_task() {
     echo "[]" > "$FILE"
   fi
   
-  # Pause any currently active task
+  # Pause any currently active task and show message
   pause_current_active
   
   jq --arg id "$ID" --arg start "$START" --arg desc "$1" \
@@ -130,7 +137,7 @@ set_active_task() {
     exit 1
   fi
   
-  # Pause current active task if any
+  # Pause current active task if any and show message
   pause_current_active
   
   # Resume the new active task
