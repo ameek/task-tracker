@@ -86,10 +86,22 @@ calculate_working_duration() {
   
   HOURS=$((WORKING_TIME / 3600))
   MINS=$(( (WORKING_TIME % 3600) / 60 ))
+  SECS=$((WORKING_TIME % 60))
+  
   if [ $HOURS -gt 0 ]; then
-    echo "${HOURS}h ${MINS}m"
+    if [ $SECS -gt 0 ]; then
+      echo "${HOURS}h ${MINS}m ${SECS}s"
+    else
+      echo "${HOURS}h ${MINS}m"
+    fi
+  elif [ $MINS -gt 0 ]; then
+    if [ $SECS -gt 0 ]; then
+      echo "${MINS}m ${SECS}s"
+    else
+      echo "${MINS}m"
+    fi
   else
-    echo "${MINS}m"
+    echo "${SECS}s"
   fi
 }
 
