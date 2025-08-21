@@ -1,6 +1,7 @@
 #!/bin/bash
 FILE="$HOME/.task-tracker/tasks.json"
 TMP="$HOME/.task-tracker/tmp_task.json"
+ACTIVE_FILE="$HOME/.task-tracker/active_task.txt"
 
 # Initialize directory and file if they don't exist
 init_tracker() {
@@ -13,6 +14,10 @@ init_tracker() {
     echo "[]" > "$FILE"
     echo "📄 Initialized tasks file: $FILE"
   fi
+  
+  if [ ! -f "$ACTIVE_FILE" ]; then
+    echo "" > "$ACTIVE_FILE"
+  fi
 }
 
 # Initialize on script start
@@ -21,6 +26,64 @@ init_tracker
 generate_id() {
   # Short unique ID from current timestamp
   echo $(date +%s | sha1sum | cut -c1-8)
+}
+
+get_active_task() {
+  cat "$ACTIVE_FILE" 2>/dev/null || echo ""
+}
+
+pause_current_active() {
+  CURRENT_ACTIVE=$(get_active_task)
+  if [ -n "$CURRENT_ACTIVE" ]; then
+    PAUSE_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+    jq --arg id "$CURRENT_ACTIVE" --arg pause "$PAUSE_TIME" \
+      'map(if .id == $id then .pause_time = $pause else . end)' \
+      "$FILE" > "$TMP" && mv "$TMP" "$FILE"
+  fi
+}
+
+resume_task() {
+  ID="$1"
+  RESUME_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+  
+  # Get current pause time and add to total paused duration
+  TASK_DATA=$(jq -r --arg id "$ID" '.[] | select(.id==$id)' "$FILE")
+  PAUSE_TIME=$(echo "$TASK_DATA" | jq -r '.pause_time // empty')
+  TOTAL_PAUSED=$(echo "$TASK_DATA" | jq -r '.total_paused_seconds // 0')
+  
+  if [ -n "$PAUSE_TIME" ] && [ "$PAUSE_TIME" != "null" ]; then
+    PAUSE_EPOCH=$(date -d "$PAUSE_TIME" +%s)
+    RESUME_EPOCH=$(date -d "$RESUME_TIME" +%s)
+    PAUSED_DURATION=$((RESUME_EPOCH - PAUSE_EPOCH))
+    NEW_TOTAL_PAUSED=$((TOTAL_PAUSED + PAUSED_DURATION))
+    
+    jq --arg id "$ID" --arg total_paused "$NEW_TOTAL_PAUSED" \
+      'map(if .id == $id then .total_paused_seconds = ($total_paused | tonumber) | .pause_time = null else . end)' \
+      "$FILE" > "$TMP" && mv "$TMP" "$FILE"
+  fi
+}
+
+calculate_working_duration() {
+  START="$1"
+  END="$2"
+  TOTAL_PAUSED="$3"
+  
+  START_EPOCH=$(date -d "$START" +%s)
+  END_EPOCH=$(date -d "$END" +%s)
+  TOTAL_ELAPSED=$((END_EPOCH - START_EPOCH))
+  WORKING_TIME=$((TOTAL_ELAPSED - TOTAL_PAUSED))
+  
+  if [ $WORKING_TIME -lt 0 ]; then
+    WORKING_TIME=0
+  fi
+  
+  HOURS=$((WORKING_TIME / 3600))
+  MINS=$(( (WORKING_TIME % 3600) / 60 ))
+  if [ $HOURS -gt 0 ]; then
+    echo "${HOURS}h ${MINS}m"
+  else
+    echo "${MINS}m"
+  fi
 }
 
 start_task() {
@@ -33,10 +96,51 @@ start_task() {
     echo "[]" > "$FILE"
   fi
   
+  # Pause any currently active task
+  pause_current_active
+  
   jq --arg id "$ID" --arg start "$START" --arg desc "$1" \
-    '. += [{"id": $id, "start": $start, "end": null, "start_desc": $desc, "end_desc": null, "details": null, "links": [], "duration": null}]' \
+    '. += [{"id": $id, "start": $start, "end": null, "start_desc": $desc, "end_desc": null, "details": null, "links": [], "duration": null, "pause_time": null, "total_paused_seconds": 0}]' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
-  echo "✅ Task started: $1 id= $ID"
+  
+  # Set this task as active
+  echo "$ID" > "$ACTIVE_FILE"
+  echo "✅ Task started and set as active: $1 id= $ID"
+}
+
+set_active_task() {
+  ID="$1"
+  
+  # Check if task ID is provided
+  if [ -z "$ID" ]; then
+    echo "❌ Task ID is required. Usage: tracker setActive <id>"
+    exit 1
+  fi
+
+  # Check if task exists and is not finished
+  TASK_DATA=$(jq -r --arg id "$ID" '.[] | select(.id==$id)' "$FILE")
+  if [ -z "$TASK_DATA" ]; then
+    echo "❌ Task id= $ID not found."
+    exit 1
+  fi
+  
+  TASK_END=$(echo "$TASK_DATA" | jq -r '.end // empty')
+  if [ -n "$TASK_END" ] && [ "$TASK_END" != "null" ]; then
+    echo "❌ Cannot set finished task as active."
+    exit 1
+  fi
+  
+  # Pause current active task if any
+  pause_current_active
+  
+  # Resume the new active task
+  resume_task "$ID"
+  
+  # Set new active task
+  echo "$ID" > "$ACTIVE_FILE"
+  
+  TASK_DESC=$(echo "$TASK_DATA" | jq -r '.start_desc')
+  echo "🎯 Task id= $ID is now active: $TASK_DESC"
 }
 
 finish_task() {
@@ -56,28 +160,35 @@ finish_task() {
     exit 1
   fi
 
-  START=$(jq -r --arg id "$ID" '.[] | select(.id==$id) | .start' "$FILE")
-  if [ "$START" = "null" ] || [ -z "$START" ]; then
+  TASK_DATA=$(jq -r --arg id "$ID" '.[] | select(.id==$id)' "$FILE")
+  if [ -z "$TASK_DATA" ]; then
     echo "❌ Task id= $ID not found."
     exit 1
   fi
 
-  START_EPOCH=$(date -d "$START" +%s)
-  END_EPOCH=$(date -d "$END" +%s)
-  DIFF=$((END_EPOCH - START_EPOCH))
-
-  HOURS=$((DIFF / 3600))
-  MINS=$(( (DIFF % 3600) / 60 ))
-  if [ $HOURS -gt 0 ]; then
-    DURATION="${HOURS}h ${MINS}m"
-  else
-    DURATION="${MINS}m"
+  START=$(echo "$TASK_DATA" | jq -r '.start')
+  TOTAL_PAUSED=$(echo "$TASK_DATA" | jq -r '.total_paused_seconds // 0')
+  
+  # If this task is currently active and paused, add final pause duration
+  CURRENT_ACTIVE=$(get_active_task)
+  if [ "$CURRENT_ACTIVE" = "$ID" ]; then
+    PAUSE_TIME=$(echo "$TASK_DATA" | jq -r '.pause_time // empty')
+    if [ -n "$PAUSE_TIME" ] && [ "$PAUSE_TIME" != "null" ]; then
+      PAUSE_EPOCH=$(date -d "$PAUSE_TIME" +%s)
+      END_EPOCH=$(date -d "$END" +%s)
+      FINAL_PAUSE=$((END_EPOCH - PAUSE_EPOCH))
+      TOTAL_PAUSED=$((TOTAL_PAUSED + FINAL_PAUSE))
+    fi
+    # Clear active task
+    echo "" > "$ACTIVE_FILE"
   fi
 
-  jq --arg id "$ID" --arg end "$END" --arg desc "$DESC" --arg dur "$DURATION" \
-    'map(if .id == $id then .end=$end | .end_desc=$desc | .duration=$dur else . end)' \
+  DURATION=$(calculate_working_duration "$START" "$END" "$TOTAL_PAUSED")
+
+  jq --arg id "$ID" --arg end "$END" --arg desc "$DESC" --arg dur "$DURATION" --arg total_paused "$TOTAL_PAUSED" \
+    'map(if .id == $id then .end=$end | .end_desc=$desc | .duration=$dur | .total_paused_seconds=($total_paused | tonumber) | .pause_time=null else . end)' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
-  echo "🏁 Task id= $ID finished: $DESC (Duration: $DURATION)"
+  echo "🏁 Task id= $ID finished: $DESC (Working Duration: $DURATION)"
 }
 
 add_link() {
@@ -146,7 +257,25 @@ show_tasks() {
 list_active() {
   echo "🔄 Active Tasks (not finished)"
   echo "------------------------------------"
-  jq 'map(select(.end == null)) | map({id: .id, started: .start, task: .start_desc})' "$FILE"
+  CURRENT_ACTIVE=$(get_active_task)
+  
+  jq --arg active_id "$CURRENT_ACTIVE" '
+    map(select(.end == null)) 
+    | map({
+        id: .id, 
+        started: .start, 
+        task: .start_desc,
+        status: (if .id == $active_id then "🎯 ACTIVE" else "⏸️  PAUSED" end)
+      })
+  ' "$FILE"
+  
+  if [ -n "$CURRENT_ACTIVE" ]; then
+    echo ""
+    echo "🎯 Currently focused on: $CURRENT_ACTIVE"
+  else
+    echo ""
+    echo "⏸️  No task currently active"
+  fi
 }
 
 daily_summary() {
@@ -270,7 +399,8 @@ export_log() {
             what_learned: .end_desc,
             details: (if .details then (.details | gsub("\\n"; "\n") | split(";") | map(split("\n")) | flatten | map(select(length > 0) | ltrimstr(" ") | rtrimstr(" ")) | join("\n")) else null end),
             links: .links,
-            status: (if .end then "completed" else "in_progress" end)
+            status: (if .end then "completed" else "in_progress" end),
+            total_paused_minutes: (if .total_paused_seconds then (.total_paused_seconds / 60 | floor) else 0 end)
           })
       }
     ' "$FILE" > "$FULL_OUTPUT_PATH"
@@ -303,8 +433,12 @@ helper_log() {
   echo "------------------------------------"
   echo "Usage:"
   echo "  tracker start <desc>"
-  echo "     → Start a new task"
-  echo "     Example: tracker start \"Read RabbitMQ docs\"  (after starting the task the script will display the id in the form: id=<trackid>)"
+  echo "     → Start a new task and set it as active"
+  echo "     Example: tracker start \"Read RabbitMQ docs\""
+  echo
+  echo "  tracker setActive <id>"
+  echo "     → Set an existing task as active (pauses current active task)"
+  echo "     Example: tracker setActive id=a1f3b92d"
   echo
   echo "  tracker finish <id> <desc>"
   echo "     → Finish a task and record what you learned"
@@ -322,7 +456,7 @@ helper_log() {
   echo "     → Show all tasks in JSON"
   echo
   echo "  tracker active"
-  echo "     → Show only active (unfinished) tasks"
+  echo "     → Show only active (unfinished) tasks with focus status"
   echo
   echo "  tracker summary [date]"
   echo "     → Show daily summary (default: today)"
@@ -337,6 +471,12 @@ helper_log() {
   echo
   echo "  tracker -h | help"
   echo "     → Show this helper log"
+  echo ""
+  echo "🎯 Focus Features:"
+  echo "   • Only one task can be active at a time"
+  echo "   • Switching tasks automatically pauses the current one"
+  echo "   • Duration calculation excludes paused time"
+  echo ""
   echo "📂 Data stored in: $HOME/.task-tracker/"
   echo "📤 Exports saved to: $HOME/task-reports/"
   echo "🔗 Installed at: $HOME/.task-tracker/tracker.sh"
@@ -345,6 +485,7 @@ helper_log() {
 
 case "$1" in
   start) shift; start_task "$*";;
+  setActive) set_active_task "$2";;
   finish) finish_task "$2" "$3";;
   link) add_link "$2" "$3";;
   details) shift; add_details "$@";;

@@ -4,14 +4,22 @@ A simple, lightweight command-line productivity tracker that helps you monitor y
 
 ## ✨ Features
 
+### 🎯 Focus Management (New!)
+- **Single Active Task**: Only one task can be active at a time for focused work
+- **Task Switching**: Switch between tasks with automatic pause/resume
+- **Smart Timing**: Duration calculation excludes paused time for accurate tracking
+- **Visual Status**: See which task is actively running vs paused
+
 ### 🚀 Task Management
-- **Start Tasks**: Begin tracking a new task with a description
+- **Start Tasks**: Begin tracking a new task with a description (auto-activated)
 - **Finish Tasks**: Complete tasks and record what you learned
-- **Active Tasks**: View all currently running (unfinished) tasks
+- **Active Tasks**: View all currently running (unfinished) tasks with focus status
 - **Task History**: Show all tasks in detailed JSON format
 
 ### ⏱️ Time Tracking
-- **Automatic Duration**: Calculates time spent on each task
+- **Automatic Duration**: Calculates actual working time on each task
+- **Pause/Resume**: Automatically pauses when switching between tasks
+- **Accurate Timing**: Excludes paused time from duration calculations
 - **Human-readable Format**: Displays duration in hours and minutes (e.g., "2h 15m")
 - **Precise Timestamps**: Records exact start and end times
 
@@ -78,16 +86,22 @@ sudo pacman -S jq     # Arch Linux
 
 ### Basic Commands
 
-#### Start a new task
+#### Start a new task (becomes active automatically)
 ```bash
 tracker start "Reading React documentation"
-# Output: ✅ Task started: Reading React documentation (id=a1f3b92d)
+# Output: ✅ Task started and set as active: Reading React documentation id= a1f3b92d
+```
+
+#### Switch focus to another task
+```bash
+tracker setActive a1f3b92d
+# Output: 🎯 Task id= a1f3b92d is now active: Reading React documentation
 ```
 
 #### Finish a task
 ```bash
 tracker finish a1f3b92d "Learned about hooks and state management"
-# Output: 🏁 Task a1f3b92d finished: Learned about hooks and state management (Duration: 1h 25m)
+# Output: 🏁 Task id= a1f3b92d finished: Learned about hooks and state management (Working Duration: 1h 25m)
 ```
 
 #### Add resources/links to a task
@@ -96,10 +110,10 @@ tracker link a1f3b92d "https://react.dev/learn"
 # Output: 🔗 Link added to task a1f3b92d: https://react.dev/learn
 ```
 
-#### View active tasks
+#### View active tasks with focus status
 ```bash
 tracker active
-# Output: Shows all unfinished tasks with IDs and descriptions
+# Output: Shows all unfinished tasks with 🎯 ACTIVE or ⏸️ PAUSED status
 ```
 
 #### View all tasks
@@ -140,10 +154,11 @@ tracker help
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `tracker start <description>` | Start a new task | `tracker start "Code review"` |
+| `tracker start <description>` | Start a new task (becomes active) | `tracker start "Code review"` |
+| `tracker setActive <id>` | Switch focus to specific task | `tracker setActive abc123` |
 | `tracker finish <id> <learned>` | Complete a task | `tracker finish abc123 "Fixed bug"` |
 | `tracker link <id> <url>` | Add link to task | `tracker link abc123 "https://..."` |
-| `tracker active` | Show unfinished tasks | `tracker active` |
+| `tracker active` | Show unfinished tasks with focus status | `tracker active` |
 | `tracker show` | Show all tasks (JSON) | `tracker show` |
 | `tracker summary [date]` | Daily summary | `tracker summary 2025-08-20` |
 | `tracker export [format] [start] [end] [file]` | Export for reporting | `tracker export csv 2025-08-01 2025-08-20` |
@@ -155,6 +170,7 @@ tracker help
 ~/.task-tracker/
 ├── tracker.sh           # Main script
 ├── tasks.json           # Task data storage
+├── active_task.txt      # Currently active task ID
 └── tmp_task.json        # Temporary file for atomic updates
 
 ~/task-reports/
@@ -177,22 +193,31 @@ Tasks are stored in JSON format with the following structure:
     "links": [
       "https://react.dev/learn",
       "https://react.dev/reference/react"
-    ]
+    ],
+    "pause_time": null,
+    "total_paused_seconds": 300
   }
 ]
 ```
 
 ## 🔍 Examples
 
-### Typical Workflow
+### Focused Work Session
 ```bash
-# Start working on something
+# Start working on something (becomes active automatically)
 tracker start "Implementing user authentication"
+
+# Work is being tracked... switch to another task if needed
+tracker start "Fix critical bug"  # Automatically pauses the auth task
+
+# Switch back to continue authentication work
+tracker setActive a1f3b92d
 
 # Check what you're working on
 tracker active
+# Shows: 🎯 ACTIVE and ⏸️ PAUSED tasks
 
-# Add useful resources
+# Add useful resources to the active task
 tracker link a1f3b92d "https://auth0.com/docs"
 tracker link a1f3b92d "https://jwt.io/introduction"
 
@@ -316,6 +341,9 @@ This project is open source. Feel free to use, modify, and distribute as needed.
 
 ## 💡 Tips
 
+- **Focus Mode**: Only one task can be active at a time - this helps maintain focus
+- **Task Switching**: Use `setActive` to switch between tasks instead of starting new ones
+- **Accurate Timing**: Duration shows actual working time, excluding paused periods
 - Use descriptive task names for better tracking
 - Add learning notes to build a knowledge base
 - Include relevant links for future reference
