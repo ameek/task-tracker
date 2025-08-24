@@ -112,8 +112,6 @@ calculate_working_duration() {
   fi
 }
 
-}
-
 start_task() {
   ID=$(generate_id)
   START=$($DATE_CMD '+%Y-%m-%d %H:%M:%S')

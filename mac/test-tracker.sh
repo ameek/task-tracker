@@ -45,7 +45,12 @@ test_output() {
 rm -rf ~/.task-tracker-test
 mkdir -p ~/.task-tracker-test
 cp ./tracker.sh ~/.task-tracker-test/
-sed -i '' 's|\.task-tracker|.task-tracker-test|g' ~/.task-tracker-test/tracker.sh
+# macOS sed syntax
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' 's|\.task-tracker|.task-tracker-test|g' ~/.task-tracker-test/tracker.sh
+else
+    sed -i 's|\.task-tracker|.task-tracker-test|g' ~/.task-tracker-test/tracker.sh
+fi
 chmod +x ~/.task-tracker-test/tracker.sh
 
 TRACKER="$HOME/.task-tracker-test/tracker.sh"
@@ -71,7 +76,7 @@ test_output "Start second task" "$TRACKER start 'Task 2'" "Task started"
 TASK2_ID=$(jq -r '.[-1].id' ~/.task-tracker-test/tasks.json)
 test_output "Finish second task" "$TRACKER finish $TASK2_ID 'Done'" "finished"
 output=$($TRACKER active 2>&1)
-if echo "$output" | grep -q "\[\]"; then
+if echo "$output" | grep -q -E '\[\s*\]|No task currently active'; then
     echo "Testing: Empty active tasks... ✅ PASS"
     ((PASSED_TESTS++))
 else
