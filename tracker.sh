@@ -24,8 +24,14 @@ init_tracker() {
 init_tracker
 
 generate_id() {
-  # Short unique ID from current timestamp with nanoseconds for uniqueness
-  echo $(date +%s%N | sha1sum | cut -c1-8)
+  # Generate readable ID format: DDMMtXX (e.g., 2408t01)
+  TODAY=$(date '+%d%m')
+  
+  # Count existing tasks for today to get next sequence number
+  EXISTING_COUNT=$(jq --arg today "$TODAY" '[.[] | select(.id | startswith($today + "t"))] | length' "$FILE" 2>/dev/null || echo "0")
+  NEXT_NUM=$(printf "%02d" $((EXISTING_COUNT + 1)))
+  
+  echo "${TODAY}t${NEXT_NUM}"
 }
 
 get_active_task() {
@@ -457,19 +463,19 @@ helper_log() {
   echo
   echo "  tracker setActive <id>"
   echo "     → Set an existing task as active (pauses current active task)"
-  echo "     Example: tracker setActive id=a1f3b92d"
+  echo "     Example: tracker setActive 2408t01"
   echo
   echo "  tracker finish <id> <desc>"
   echo "     → Finish a task and record what you learned"
-  echo "     Example: tracker finish id=a1f3b92d \"Learned basics\""
+  echo "     Example: tracker finish 2408t01 \"Learned basics\""
   echo
   echo "  tracker link <id> <url>"
   echo "     → Add a link/resource to a task"
-  echo "     Example: tracker link id=a1f3b92d https://www.rabbitmq.com/tutorials/"
+  echo "     Example: tracker link 2408t01 https://www.rabbitmq.com/tutorials/"
   echo
   echo "  tracker details <id> <details>"
   echo "     → Add detailed notes to a task (use ';' or newlines for line breaks in JSON)"
-  echo "     Example: tracker details id=a1f3b92d \"Key insight; Important finding; Next steps\""
+  echo "     Example: tracker details 2408t01 \"Key insight; Important finding; Next steps\""
   echo
   echo "  tracker show"
   echo "     → Show all tasks in JSON"
