@@ -270,10 +270,20 @@ add_details() {
     exit 1
   fi
 
-  jq --arg id "$ID" --arg details "$DETAILS" \
+  # Get existing details
+  EXISTING_DETAILS=$(jq -r --arg id "$ID" '.[] | select(.id==$id) | .details // ""' "$FILE")
+  
+  # Append new details to existing ones
+  if [ -n "$EXISTING_DETAILS" ] && [ "$EXISTING_DETAILS" != "null" ]; then
+    COMBINED_DETAILS="$EXISTING_DETAILS; $DETAILS"
+  else
+    COMBINED_DETAILS="$DETAILS"
+  fi
+
+  jq --arg id "$ID" --arg details "$COMBINED_DETAILS" \
     'map(if .id == $id then .details = $details else . end)' \
     "$FILE" > "$TMP" && mv "$TMP" "$FILE"
-  echo "📝 Details added to task id= $ID: $DETAILS"
+  echo "📝 Details appended to task id= $ID: $DETAILS"
 }
 
 show_tasks() {
