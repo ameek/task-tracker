@@ -3,40 +3,53 @@ FILE="$HOME/.task-tracker/tasks.json"
 TMP="$HOME/.task-tracker/tmp_task.json"
 ACTIVE_FILE="$HOME/.task-tracker/active_task.txt"
 
-# macOS compatibility: use gdate if available, fallback to BSD date
-if command -v gdate &> /dev/null; then
-  DATE_CMD="gdate"
-else
-  DATE_CMD="date"
-fi
-# Use shasum for macOS
-SHASUM_CMD="shasum"
-
-# Check for jq
-if ! command -v jq &> /dev/null; then
-  echo "jq is required. Install with: brew install jq"
-  exit 1
-fi
-
+# Initialize directory and file if they don't exist
 init_tracker() {
   if [ ! -d "$HOME/.task-tracker" ]; then
     mkdir -p "$HOME/.task-tracker"
     echo "📁 Created directory: $HOME/.task-tracker"
   fi
+  
   if [ ! -f "$FILE" ]; then
     echo "[]" > "$FILE"
     echo "📄 Initialized tasks file: $FILE"
   fi
+  
   if [ ! -f "$ACTIVE_FILE" ]; then
     echo "" > "$ACTIVE_FILE"
   fi
 }
 
+# Initialize on script start
 init_tracker
+
+# Cross-platform date function
+parse_date() {
+  local date_str="$1"
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    date -j -f "%Y-%m-%d %H:%M:%S" "$date_str" +%s 2>/dev/null || date -j -f "%Y-%m-%d" "$date_str" +%s
+  else
+    # Linux
+    date -d "$date_str" +%s
+  fi
+}
+
+# Cross-platform date arithmetic
+date_subtract_days() {
+  local days="$1"
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    date -j -v-${days}d '+%Y-%m-%d'
+  else
+    # Linux
+    date -d "${days} days ago" '+%Y-%m-%d'
+  fi
+}
 
 generate_id() {
   # Generate readable ID format: DDMMtXX (e.g., 2408t01)
-  TODAY=$($DATE_CMD '+%d%m')
+  TODAY=$(date '+%d%m')
   
   # Count existing tasks for today to get next sequence number
   EXISTING_COUNT=$(jq --arg today "$TODAY" '[.[] | select(.id | startswith($today + "t"))] | length' "$FILE" 2>/dev/null || echo "0")
@@ -52,29 +65,105 @@ get_active_task() {
 pause_current_active() {
   CURRENT_ACTIVE=$(get_active_task)
   if [ -n "$CURRENT_ACTIVE" ]; then
-    PAUSE_TIME=$($DATE_CMD '+%Y-%m-%d %H:%M:%S')
+    PAUSE_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+    # Get the description of the task being paused
     PAUSED_TASK_DESC=$(jq -r --arg id "$CURRENT_ACTIVE" '.[] | select(.id==$id) | .start_desc' "$FILE")
+    
     jq --arg id "$CURRENT_ACTIVE" --arg pause "$PAUSE_TIME" \
       'map(if .id == $id then .pause_time = $pause else . end)' \
       "$FILE" > "$TMP" && mv "$TMP" "$FILE"
+    
     echo "⏸️  Paused: $PAUSED_TASK_DESC (id= $CURRENT_ACTIVE)"
     return 0
   fi
   return 1
 }
 
+pause_all_tasks() {
+  PAUSE_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+  
+  # Get all active (unfinished) tasks
+  ACTIVE_TASKS=$(jq -r 'map(select(.end == null)) | .[].id' "$FILE")
+  
+  if [ -z "$ACTIVE_TASKS" ]; then
+    echo "ℹ️  No active tasks to pause."
+    return 0
+  fi
+  
+  PAUSED_COUNT=0
+  echo "⏸️  Pausing all active tasks for break..."
+  
+  while IFS= read -r task_id; do
+    if [ -n "$task_id" ]; then
+      TASK_DESC=$(jq -r --arg id "$task_id" '.[] | select(.id==$id) | .start_desc' "$FILE")
+      
+      jq --arg id "$task_id" --arg pause "$PAUSE_TIME" \
+        'map(if .id == $id then .pause_time = $pause else . end)' \
+        "$FILE" > "$TMP" && mv "$TMP" "$FILE"
+      
+      echo "   ⏸️  $TASK_DESC (id= $task_id)"
+      PAUSED_COUNT=$((PAUSED_COUNT + 1))
+    fi
+  done <<< "$ACTIVE_TASKS"
+  
+  # Clear active task
+  echo "" > "$ACTIVE_FILE"
+  
+  echo "✅ Paused $PAUSED_COUNT task(s). Enjoy your break! 🛑"
+  echo "💡 Use 'tracker resumeAll' when ready to continue working."
+}
+
+resume_all_tasks() {
+  RESUME_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+  
+  # Get the most recently paused task (the one you were working on before the break)
+  LAST_ACTIVE_TASK=$(jq -r 'map(select(.end == null and .pause_time != null)) | sort_by(.pause_time) | last | .id // empty' "$FILE")
+  
+  if [ -z "$LAST_ACTIVE_TASK" ]; then
+    echo "ℹ️  No paused tasks to resume."
+    return 0
+  fi
+  
+  # Resume only the last active task
+  TASK_DATA=$(jq -r --arg id "$LAST_ACTIVE_TASK" '.[] | select(.id==$id)' "$FILE")
+  PAUSE_TIME=$(echo "$TASK_DATA" | jq -r '.pause_time // empty')
+  TOTAL_PAUSED=$(echo "$TASK_DATA" | jq -r '.total_paused_seconds // 0')
+  TASK_DESC=$(echo "$TASK_DATA" | jq -r '.start_desc')
+  
+  if [ -n "$PAUSE_TIME" ] && [ "$PAUSE_TIME" != "null" ]; then
+    PAUSE_EPOCH=$(parse_date "$PAUSE_TIME")
+    RESUME_EPOCH=$(parse_date "$RESUME_TIME")
+    PAUSED_DURATION=$((RESUME_EPOCH - PAUSE_EPOCH))
+    NEW_TOTAL_PAUSED=$((TOTAL_PAUSED + PAUSED_DURATION))
+    
+    jq --arg id "$LAST_ACTIVE_TASK" --arg total_paused "$NEW_TOTAL_PAUSED" \
+      'map(if .id == $id then .total_paused_seconds = ($total_paused | tonumber) | .pause_time = null else . end)' \
+      "$FILE" > "$TMP" && mv "$TMP" "$FILE"
+    
+    # Set this task as active
+    echo "$LAST_ACTIVE_TASK" > "$ACTIVE_FILE"
+    
+    echo "▶️  Welcome back! Resuming your last task:"
+    echo "   🎯 $TASK_DESC (id= $LAST_ACTIVE_TASK)"
+    echo "✅ You're now focused on the task you were working on before the break."
+  fi
+}
+
 resume_task() {
   ID="$1"
-  RESUME_TIME=$($DATE_CMD '+%Y-%m-%d %H:%M:%S')
+  RESUME_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+  
+  # Get current pause time and add to total paused duration
   TASK_DATA=$(jq -r --arg id "$ID" '.[] | select(.id==$id)' "$FILE")
   PAUSE_TIME=$(echo "$TASK_DATA" | jq -r '.pause_time // empty')
   TOTAL_PAUSED=$(echo "$TASK_DATA" | jq -r '.total_paused_seconds // 0')
+  
   if [ -n "$PAUSE_TIME" ] && [ "$PAUSE_TIME" != "null" ]; then
-    # Try gdate first, fallback to BSD date
-    PAUSE_EPOCH=$($DATE_CMD -j -f "%Y-%m-%d %H:%M:%S" "$PAUSE_TIME" +%s 2>/dev/null || $DATE_CMD -d "$PAUSE_TIME" +%s)
-    RESUME_EPOCH=$($DATE_CMD -j -f "%Y-%m-%d %H:%M:%S" "$RESUME_TIME" +%s 2>/dev/null || $DATE_CMD -d "$RESUME_TIME" +%s)
+    PAUSE_EPOCH=$(parse_date "$PAUSE_TIME")
+    RESUME_EPOCH=$(parse_date "$RESUME_TIME")
     PAUSED_DURATION=$((RESUME_EPOCH - PAUSE_EPOCH))
     NEW_TOTAL_PAUSED=$((TOTAL_PAUSED + PAUSED_DURATION))
+    
     jq --arg id "$ID" --arg total_paused "$NEW_TOTAL_PAUSED" \
       'map(if .id == $id then .total_paused_seconds = ($total_paused | tonumber) | .pause_time = null else . end)' \
       "$FILE" > "$TMP" && mv "$TMP" "$FILE"
@@ -85,16 +174,20 @@ calculate_working_duration() {
   START="$1"
   END="$2"
   TOTAL_PAUSED="$3"
-  START_EPOCH=$($DATE_CMD -j -f "%Y-%m-%d %H:%M:%S" "$START" +%s 2>/dev/null || $DATE_CMD -d "$START" +%s)
-  END_EPOCH=$($DATE_CMD -j -f "%Y-%m-%d %H:%M:%S" "$END" +%s 2>/dev/null || $DATE_CMD -d "$END" +%s)
+  
+  START_EPOCH=$(parse_date "$START")
+  END_EPOCH=$(parse_date "$END")
   TOTAL_ELAPSED=$((END_EPOCH - START_EPOCH))
   WORKING_TIME=$((TOTAL_ELAPSED - TOTAL_PAUSED))
+  
   if [ $WORKING_TIME -lt 0 ]; then
     WORKING_TIME=0
   fi
+  
   HOURS=$((WORKING_TIME / 3600))
   MINS=$(( (WORKING_TIME % 3600) / 60 ))
   SECS=$((WORKING_TIME % 60))
+  
   if [ $HOURS -gt 0 ]; then
     if [ $SECS -gt 0 ]; then
       echo "${HOURS}h ${MINS}m ${SECS}s"
@@ -114,7 +207,7 @@ calculate_working_duration() {
 
 start_task() {
   ID=$(generate_id)
-  START=$($DATE_CMD '+%Y-%m-%d %H:%M:%S')
+  START=$(date '+%Y-%m-%d %H:%M:%S')
   
   # Check if JSON file is valid
   if ! jq empty "$FILE" 2>/dev/null; then
@@ -171,7 +264,7 @@ set_active_task() {
 
 finish_task() {
   ID="$1"
-  END=$($DATE_CMD '+%Y-%m-%d %H:%M:%S')
+  END=$(date '+%Y-%m-%d %H:%M:%S')
   DESC="$2"
 
   # Check if task ID is provided
@@ -200,8 +293,8 @@ finish_task() {
   if [ "$CURRENT_ACTIVE" = "$ID" ]; then
     PAUSE_TIME=$(echo "$TASK_DATA" | jq -r '.pause_time // empty')
     if [ -n "$PAUSE_TIME" ] && [ "$PAUSE_TIME" != "null" ]; then
-      PAUSE_EPOCH=$($DATE_CMD -j -f "%Y-%m-%d %H:%M:%S" "$PAUSE_TIME" +%s 2>/dev/null || $DATE_CMD -d "$PAUSE_TIME" +%s)
-      END_EPOCH=$($DATE_CMD -j -f "%Y-%m-%d %H:%M:%S" "$END" +%s 2>/dev/null || $DATE_CMD -d "$END" +%s)
+      PAUSE_EPOCH=$(parse_date "$PAUSE_TIME")
+      END_EPOCH=$(parse_date "$END")
       FINAL_PAUSE=$((END_EPOCH - PAUSE_EPOCH))
       TOTAL_PAUSED=$((TOTAL_PAUSED + FINAL_PAUSE))
     fi
@@ -317,7 +410,7 @@ list_active() {
 daily_summary() {
   DATE="$1"
   if [ -z "$DATE" ]; then
-    DATE=$($DATE_CMD '+%Y-%m-%d')
+    DATE=$(date '+%Y-%m-%d')
   fi
 
   echo "📅 Summary for $DATE"
@@ -353,11 +446,11 @@ export_log() {
     END_DATE="$START_DATE"
   elif [ -z "$START_DATE" ]; then
     # Set default date range (last 30 days if not specified)
-    START_DATE=$($DATE_CMD -j -v-30d +%Y-%m-%d 2>/dev/null || $DATE_CMD -d '30 days ago' '+%Y-%m-%d')
-    END_DATE=$($DATE_CMD '+%Y-%m-%d')
+    START_DATE=$(date_subtract_days 30)
+    END_DATE=$(date '+%Y-%m-%d')
   elif [ -z "$END_DATE" ]; then
     # If start date provided but no end date, default end date to today
-    END_DATE=$($DATE_CMD '+%Y-%m-%d')
+    END_DATE=$(date '+%Y-%m-%d')
   fi
 
   # Set default output file
@@ -476,6 +569,14 @@ helper_log() {
   echo "     → Set an existing task as active (pauses current active task)"
   echo "     Example: tracker setActive 2408t01"
   echo
+  echo "  tracker pauseAll"
+  echo "     → Pause all active tasks for a break"
+  echo "     Example: tracker pauseAll"
+  echo
+  echo "  tracker resumeAll"
+  echo "     → Resume your last active task after a break"
+  echo "     Example: tracker resumeAll"
+  echo
   echo "  tracker finish <id> <desc>"
   echo "     → Finish a task and record what you learned"
   echo "     Example: tracker finish 2408t01 \"Learned basics\""
@@ -512,6 +613,8 @@ helper_log() {
   echo "   • Only one task can be active at a time"
   echo "   • Switching tasks automatically pauses the current one"
   echo "   • Duration calculation excludes paused time"
+  echo "   • Use pauseAll to pause all tasks for a break"
+  echo "   • Use resumeAll to resume your last active task after break"
   echo ""
   echo "📂 Data stored in: $HOME/.task-tracker/"
   echo "📤 Exports saved to: $HOME/task-reports/"
@@ -522,6 +625,8 @@ helper_log() {
 case "$1" in
   start) shift; start_task "$*";;
   setActive) set_active_task "$2";;
+  pauseAll) pause_all_tasks;;
+  resumeAll) resume_all_tasks;;
   finish) finish_task "$2" "$3";;
   link) add_link "$2" "$3";;
   details) shift; add_details "$@";;
